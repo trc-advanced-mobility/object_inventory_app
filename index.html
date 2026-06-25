@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Sign inventory — field</title>
+<!-- iOS "Add to Home Screen" standalone app -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sign inventory">
+<meta name="theme-color" content="#1e6fff">
+<link rel="manifest" href='data:application/manifest+json,{"name":"Sign inventory","short_name":"Signs","display":"standalone","background_color":"%23ffffff","theme_color":"%231e6fff","start_url":"."}'>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  #map { position: absolute; inset: 0; }
+  .count-marker { border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 3px rgba(0,0,0,.5);
+    color: #fff; font: 600 12px sans-serif; text-align: center;
+    text-shadow: 0 0 2px #000, 0 0 2px #000; }
+  .user-dot { width: 18px; height: 18px; border-radius: 50%; background: #1e88ff;
+    border: 3px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,.5); }
+  .legend { background: #fff; padding: 8px 10px; border-radius: 4px; font: 12px sans-serif;
+    line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,.3); max-width: 60vw; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    margin-right: 6px; vertical-align: -1px; border: 1px solid #fff; }
+  .legend button { font: 11px sans-serif; margin-top: 6px; cursor: pointer; }
+  .legend-hint { font: italic 10px sans-serif; color: #888; margin: 1px 0 3px; }
+  .popup-title { font: 600 13px sans-serif; margin-bottom: 6px; }
+  .popup-scroll { display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; }
+  .popup-item { flex: 0 0 auto; width: 160px; }
+  .popup-img { width: 150px; height: 150px; object-fit: cover; border-radius: 4px; display: block; }
+  .popup-meta { font: 12px sans-serif; color: #555; }
+  .arrow svg { display: block; margin: 0 auto 4px; }
+  .state-row { display: flex; gap: 3px; margin-top: 4px; }
+  .stbtn { flex: 1; font: 600 10px sans-serif; padding: 3px 0; border: 1px solid #ccc;
+    border-radius: 3px; background: #f7f7f7; color: #444; cursor: pointer; }
+  .stbtn.active { background: var(--c); color: #fff; border-color: var(--c); }
+  .zoom-lens { position: fixed; pointer-events: none; display: none; z-index: 10000;
+    width: 260px; height: 260px; border: 2px solid #fff; border-radius: 6px;
+    background-color: #000; background-repeat: no-repeat; box-shadow: 0 2px 10px rgba(0,0,0,.6); }
+  /* Floating action buttons */
+  .fab { position: absolute; right: 14px; z-index: 1000; border: none; border-radius: 50%;
+    width: 56px; height: 56px; box-shadow: 0 2px 8px rgba(0,0,0,.4); cursor: pointer;
+    font-size: 24px; display: flex; align-items: center; justify-content: center; }
+  .fab-capture { bottom: calc(24px + env(safe-area-inset-bottom)); background: #1e6fff; color: #fff; font-size: 30px; }
+  .fab-locate { bottom: calc(92px + env(safe-area-inset-bottom)); background: #fff; color: #1e6fff; font-size: 22px; }
+  .toast { position: absolute; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: rgba(0,0,0,.82); color: #fff; font: 13px sans-serif; padding: 8px 14px;
+    border-radius: 18px; z-index: 1500; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+  .banner { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    z-index: 1200; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.3); border-radius: 8px;
+    padding: 10px 14px; font: 13px sans-serif; display: none; align-items: center; gap: 10px; max-width: 90vw; }
+  .banner button { font: 12px sans-serif; padding: 5px 10px; cursor: pointer; }
+  /* Help modal */
+  .help-overlay { position: fixed; inset: 0; z-index: 11000; display: none; background: rgba(0,0,0,.5); }
+  .help-overlay.open { display: flex; align-items: center; justify-content: center; }
+  .help-modal { background: #fff; width: min(560px, 92vw); max-height: 84vh; overflow-y: auto;
+    border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.4); padding: 20px 24px;
+    font: 13px/1.55 sans-serif; color: #222; }
+  .help-modal h2 { margin: 0 0 4px; font-size: 18px; }
+  .help-modal h3 { margin: 16px 0 6px; font-size: 14px; color: #1e6fff; }
+  .help-modal ul { margin: 6px 0; padding-left: 20px; }
+  .help-modal code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+  .help-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    margin-right: 5px; vertical-align: -1px; border: 1px solid #fff; box-shadow: 0 0 1px #999; }
+  .help-close { float: right; border: none; background: #eee; border-radius: 4px;
+    width: 26px; height: 26px; font-size: 16px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="banner" id="banner">
+  <span id="bannerText">No signs yet. Import your seed file to get started.</span>
+  <button onclick="pickImport()">Import…</button>
+</div>
+
+<button class="fab fab-locate" id="locateBtn" title="Center on my location">◎</button>
+<button class="fab fab-capture" id="captureBtn" title="Add a sign here">＋</button>
+<div class="toast" id="toast"></div>
+
+<!-- hidden inputs -->
+<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none">
+<input id="importInput" type="file" accept="application/json,.json" style="display:none">
+
+<script>
+"use strict";
+
+// ---- Config (mirrors build_map.py) -----------------------------------------
+const STATES = ["todo", "good", "review", "replace"];
+const STATE_COLOR = { todo: "#9e9e9e", good: "#2ca25f", review: "#f59e0b", replace: "#e6194b" };
+const RELIABILITY_COLOR = { good: "#2ca25f", suspect: "#f59e0b", bad: "#e6194b", unknown: "#888888" };
+const THUMB_WIDTH = 720, THUMB_QUALITY = 0.75;
+// Live-GPS accuracy (metres) -> reliability, replacing the old EXIF "lag" metric.
+const ACC_GOOD_M = 10, ACC_SUSPECT_M = 25;
+const activeStates = new Set(STATES);
+
+// ---- IndexedDB store --------------------------------------------------------
+const DB_NAME = "signInventory", STORE = "signs";
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "id" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+let db;
+function tx(mode) { return db.transaction(STORE, mode).objectStore(STORE); }
+function dbGetAll() {
+  return new Promise((res, rej) => { const r = tx("readonly").getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+function dbPut(rec) {
+  return new Promise((res, rej) => { const r = tx("readwrite").put(rec); r.onsuccess = () => res(); r.onerror = () => rej(r.error); });
+}
+function dbPutMany(recs) {
+  return new Promise((res, rej) => {
+    const store = tx("readwrite"); let i = 0;
+    store.transaction.oncomplete = () => res();
+    store.transaction.onerror = () => rej(store.transaction.error);
+    (function next() { if (i < recs.length) { const r = store.put(recs[i++]); r.onsuccess = next; } })();
+  });
+}
+
+// ---- Map --------------------------------------------------------------------
+const map = L.map("map", { zoomControl: true });
+const sat = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles © Esri" });
+const road = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { maxZoom: 19, attribution: "© OpenStreetMap" });
+sat.addTo(map);
+L.control.layers({ Satellite: sat, "Road map": road }, null, { position: "topright" }).addTo(map);
+map.setView([33.4, -112.0], 12);
+
+const markerLayer = L.featureGroup().addTo(map);
+const groups = {};          // coordKey -> { latlng, feats:[rec], marker }
+const signsById = {};       // id -> rec
+const groupOfId = {};       // id -> group
+
+const coordKey = (lat, lon) => lat.toFixed(6) + "," + lon.toFixed(6);
+function getState(rec) { return rec.state || "todo"; }
+
+// ---- Marker rendering (ported from build_map.py) ---------------------------
+function arrowSvg(deg, color) {
+  if (deg == null) return `<div class="popup-meta">dir&nbsp;?</div>`;
+  return `<div class="arrow"><svg width="34" height="34" viewBox="0 0 34 34" style="transform:rotate(${deg}deg)">` +
+    `<line x1="17" y1="17" x2="17" y2="6" stroke="${color}" stroke-width="3.5"/>` +
+    `<polygon points="17,2 11,13 23,13" fill="${color}"/>` +
+    `<circle cx="17" cy="17" r="3.5" fill="${color}" stroke="#fff" stroke-width="1.5"/></svg></div>`;
+}
+function accColor(m) {
+  if (m == null) return RELIABILITY_COLOR.unknown;
+  if (m <= ACC_GOOD_M) return RELIABILITY_COLOR.good;
+  if (m <= ACC_SUSPECT_M) return RELIABILITY_COLOR.suspect;
+  return RELIABILITY_COLOR.bad;
+}
+function stateIcon(g) {
+  const present = STATES.filter(s => activeStates.has(s) && g.feats.some(f => getState(f) === s));
+  const colors = present.map(s => STATE_COLOR[s]);
+  let bg;
+  if (colors.length <= 1) {
+    bg = colors[0] || STATE_COLOR.todo;
+  } else {
+    const step = 100 / colors.length;
+    bg = `linear-gradient(90deg, ${colors.map((c, i) => `${c} ${i * step}% ${(i + 1) * step}%`).join(", ")})`;
+  }
+  const n = g.feats.length, size = n > 1 ? 26 : 20;
+  const html = `<div class="count-marker" style="background:${bg};width:${size}px;height:${size}px;line-height:${size - 4}px">${n}</div>`;
+  return L.divIcon({ className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2], html });
+}
+function stateButtons(rec) {
+  const cur = getState(rec);
+  const btns = STATES.map(s =>
+    `<button class="stbtn ${s === cur ? "active" : ""}" style="--c:${STATE_COLOR[s]}" ` +
+    `onclick="onSignState('${rec.id}','${s}',this)">${s}</button>`).join("");
+  return `<div class="state-row">${btns}</div>`;
+}
+function groupPopup(g) {
+  const items = g.feats.map(rec => {
+    const dir = (rec.heading == null) ? "unknown" : `${rec.heading}° true`;
+    const acc = (rec.accuracy_m == null) ? "?" : "±" + rec.accuracy_m + " m";
+    return `<div class="popup-item">` +
+      arrowSvg(rec.heading, "#1e6fff") +
+      `<div><img class="popup-img" src="${rec.image}" alt="${rec.name}" />` +
+      `<div class="popup-meta" style="word-break:break-all">${rec.name}</div>` +
+      `<div class="popup-meta">Travel: <b>${dir}</b></div>` +
+      `<div class="popup-meta">Type: ${rec.sign_type || "Unknown"}</div>` +
+      `<div class="popup-meta" style="color:${accColor(rec.accuracy_m)};font-weight:600">GPS ${acc}</div>` +
+      stateButtons(rec) + `</div></div>`;
+  }).join("");
+  const n = g.feats.length;
+  return `<div class="popup-title">${n} sign${n > 1 ? "s" : ""} at this location</div>` +
+    `<div class="popup-scroll">${items}</div>`;
+}
+function ensureMarker(g) {
+  if (g.marker) { g.marker.setIcon(stateIcon(g)); return; }
+  g.marker = L.marker(g.latlng, { icon: stateIcon(g) }).bindPopup(() => groupPopup(g), { maxWidth: 500 });
+  markerLayer.addLayer(g.marker);
+}
+function refreshGroup(g) {
+  const visible = g.feats.some(f => activeStates.has(getState(f)));
+  if (visible) { ensureMarker(g); if (g.marker && !markerLayer.hasLayer(g.marker)) markerLayer.addLayer(g.marker); }
+  else if (g.marker && markerLayer.hasLayer(g.marker)) markerLayer.removeLayer(g.marker);
+}
+function applyFilter() { for (const k in groups) refreshGroup(groups[k]); }
+function toggleState(s, on) { on ? activeStates.add(s) : activeStates.delete(s); applyFilter(); }
+
+// Add one record to the in-memory index + map (no DB write).
+function indexSign(rec) {
+  signsById[rec.id] = rec;
+  const key = coordKey(rec.lat, rec.lon);
+  const g = groups[key] || (groups[key] = { latlng: [rec.lat, rec.lon], feats: [] });
+  if (!g.feats.some(f => f.id === rec.id)) g.feats.push(rec);
+  groupOfId[rec.id] = g;
+  return g;
+}
+async function onSignState(id, s, btn) {
+  const rec = signsById[id]; if (!rec) return;
+  rec.state = s;
+  await dbPut(rec);
+  const row = btn.parentElement;
+  row.querySelectorAll(".stbtn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  refreshGroup(groupOfId[id]);
+}
+
+// ---- Review-state / filter control (bottom-right) --------------------------
+const legend = L.control({ position: "bottomright" });
+legend.onAdd = () => {
+  const div = L.DomUtil.create("div", "legend");
+  L.DomEvent.disableClickPropagation(div);
+  L.DomEvent.disableScrollPropagation(div);
+  div.innerHTML =
+    `<b>Review state</b><br>` +
+    `<div class="legend-hint">Uncheck to hide from map</div>` +
+    STATES.map(s =>
+      `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleState('${s}',this.checked)"> ` +
+      `<i style="background:${STATE_COLOR[s]}"></i>${s}</label>`).join("<br>") + `<br>` +
+    `<button onclick="exportBackup()">Export</button> ` +
+    `<button onclick="pickImport()">Import</button>` +
+    `<br><button onclick="showHelp()" style="margin-top:4px">Help</button>`;
+  return div;
+};
+legend.addTo(map);
+
+// ---- Live location ----------------------------------------------------------
+let userMarker, accuracyCircle, lastPos = null, followedOnce = false;
+function startLocation() {
+  if (!navigator.geolocation) { toast("Location not supported"); return; }
+  navigator.geolocation.watchPosition(pos => {
+    lastPos = pos;
+    const { latitude, longitude, accuracy } = pos.coords;
+    const ll = [latitude, longitude];
+    if (!userMarker) {
+      userMarker = L.marker(ll, { icon: L.divIcon({ className: "", html: '<div class="user-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 2000 }).addTo(map);
+      accuracyCircle = L.circle(ll, { radius: accuracy, color: "#1e88ff", weight: 1, fillColor: "#1e88ff", fillOpacity: 0.12 }).addTo(map);
+    } else {
+      userMarker.setLatLng(ll); accuracyCircle.setLatLng(ll).setRadius(accuracy);
+    }
+    if (!followedOnce) { followedOnce = true; map.setView(ll, 18); }
+  }, err => {
+    toast(err.code === 1 ? "Location permission denied" : "Waiting for GPS…");
+  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
+}
+document.getElementById("locateBtn").onclick = () => {
+  if (lastPos) map.setView([lastPos.coords.latitude, lastPos.coords.longitude], 18);
+  else { toast("Getting your location…"); startLocation(); }
+};
+
+// ---- Compass heading (best effort, iOS needs a permission gesture) ----------
+let lastHeading = null;
+function onOrient(e) {
+  const h = (e.webkitCompassHeading != null) ? e.webkitCompassHeading
+          : (e.alpha != null && e.absolute) ? (360 - e.alpha) : null;
+  if (h != null) lastHeading = Math.round(h);
+}
+async function enableHeading() {
+  try {
+    const D = window.DeviceOrientationEvent;
+    if (D && typeof D.requestPermission === "function") {
+      if (await D.requestPermission() !== "granted") return;
+    }
+    window.addEventListener("deviceorientation", onOrient, true);
+  } catch (e) {}
+}
+
+// ---- Capture a sign ---------------------------------------------------------
+const cameraInput = document.getElementById("cameraInput");
+document.getElementById("captureBtn").onclick = async () => {
+  await enableHeading();         // ask once, on a user gesture
+  if (!lastPos) startLocation(); // make sure GPS is warming up
+  cameraInput.value = "";
+  cameraInput.click();
+};
+cameraInput.onchange = async () => {
+  const file = cameraInput.files[0];
+  if (!file) return;
+  // Capture the freshest GPS fix at the moment of the photo.
+  let pos = lastPos;
+  try { pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })); }
+  catch (e) { /* fall back to last watch position */ }
+  if (!pos) { toast("No GPS fix — sign not added"); return; }
+  const image = await downscale(file);
+  const acc = Math.round(pos.coords.accuracy);
+  const rec = {
+    id: "cap-" + Date.now(),
+    name: "capture " + new Date().toLocaleString(),
+    lat: pos.coords.latitude, lon: pos.coords.longitude,
+    heading: lastHeading, sign_type: "Unknown",
+    lag_seconds: null, accuracy_m: acc,
+    reliability: acc <= ACC_GOOD_M ? "good" : acc <= ACC_SUSPECT_M ? "suspect" : "bad",
+    state: "todo", source: "capture", created: new Date().toISOString(),
+  };
+  await dbPut(rec);
+  const g = indexSign(rec);
+  refreshGroup(g);
+  hideBanner();
+  map.setView(g.latlng, Math.max(map.getZoom(), 18));
+  g.marker.openPopup();
+  toast("Sign added (±" + acc + " m)");
+};
+// Downscale + re-encode to a JPEG data URI, honoring orientation via createImageBitmap.
+async function downscale(file) {
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
+  catch (e) { bmp = await createImageBitmap(file); }
+  const scale = Math.min(1, THUMB_WIDTH / bmp.width);
+  const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+  const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+  canvas.getContext("2d").drawImage(bmp, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", THUMB_QUALITY);
+}
+
+// ---- Export / Import backup -------------------------------------------------
+async function exportBackup() {
+  const signs = await dbGetAll();
+  if (!signs.length) { toast("Nothing to export yet"); return; }
+  const blob = new Blob([JSON.stringify({ version: 1, kind: "sign-inventory-backup", exported: new Date().toISOString(), signs })], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "sign_inventory_" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  toast(signs.length + " signs exported");
+}
+const importInput = document.getElementById("importInput");
+function pickImport() { importInput.value = ""; importInput.click(); }
+importInput.onchange = () => {
+  const file = importInput.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      const data = JSON.parse(r.result);
+      const signs = Array.isArray(data) ? data : data.signs;
+      if (!Array.isArray(signs)) throw new Error("no signs array");
+      await dbPutMany(signs);
+      signs.forEach(indexSign);
+      applyFilter();
+      if (markerLayer.getLayers().length) map.fitBounds(markerLayer.getBounds().pad(0.2));
+      hideBanner();
+      toast("Imported " + signs.length + " signs");
+    } catch (e) { toast("Could not read that file"); }
+  };
+  r.readAsText(file);
+};
+
+// ---- Small UI helpers -------------------------------------------------------
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+function showBanner(msg) { const b = document.getElementById("banner"); if (msg) document.getElementById("bannerText").textContent = msg; b.style.display = "flex"; }
+function hideBanner() { document.getElementById("banner").style.display = "none"; }
+
+// ---- Help -------------------------------------------------------------------
+function swatch(s) { return `<span class="help-swatch" style="background:${STATE_COLOR[s]}"></span>`; }
+const helpOverlay = document.createElement("div");
+helpOverlay.className = "help-overlay";
+helpOverlay.addEventListener("click", e => { if (e.target === helpOverlay) hideHelp(); });
+helpOverlay.innerHTML = `<div class="help-modal">
+  <button class="help-close" onclick="hideHelp()">&times;</button>
+  <h2>Sign inventory — field app</h2>
+  <p>Everything you capture is stored <b>on this device only</b>. Nothing is uploaded.</p>
+  <h3>Your location</h3>
+  <p>The blue dot is your live GPS position; the ring shows its accuracy. Tap ◎ to recenter.</p>
+  <h3>Add a sign</h3>
+  <p>Tap the blue <b>＋</b>, take a photo, and a circle drops at your <i>current</i> GPS position
+  immediately — no rebuild needed. The pin uses the live fix at the moment you shoot, so it's
+  as accurate as your GPS is right then (shown as <code>GPS ±N m</code> in the popup).</p>
+  <h3>Map markers</h3>
+  <ul>
+    <li><b>Circle</b> = a sign location; <b>number</b> = how many photos are grouped there.</li>
+    <li><b>Color</b> = review state (mixed states show as stripes):
+      ${swatch("todo")}todo · ${swatch("good")}good · ${swatch("review")}review · ${swatch("replace")}replace.</li>
+  </ul>
+  <p>Tap a circle for its photos. Set each one's state with the todo/good/review/replace buttons;
+  uncheck a state in the bottom-right box to hide it.</p>
+  <h3>Backup (important)</h3>
+  <p>This device holds the only copy. Use <b>Export</b> at the end of each day to save a backup
+  file to your phone (Files app). <b>Import</b> restores a backup — or loads the starting
+  <code>seed.json</code> the first time.</p>
+  <p style="color:#888">Tip: add this page to your Home Screen so iOS keeps the data and it opens full-screen.</p>
+</div>`;
+document.body.appendChild(helpOverlay);
+function showHelp() { helpOverlay.classList.add("open"); }
+function hideHelp() { helpOverlay.classList.remove("open"); }
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideHelp(); });
+
+// ---- Boot -------------------------------------------------------------------
+(async function init() {
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+  db = await openDB();
+  const signs = await dbGetAll();
+  signs.forEach(indexSign);
+  applyFilter();
+  if (signs.length) { if (markerLayer.getLayers().length) map.fitBounds(markerLayer.getBounds().pad(0.2)); }
+  else showBanner("No signs yet. Import your seed file to get started.");
+  startLocation();
+})();
+</script>
+</body>
+</html>
