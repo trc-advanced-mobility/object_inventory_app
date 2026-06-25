@@ -32,6 +32,10 @@
   .popup-scroll { display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; }
   .popup-item { flex: 0 0 auto; width: 160px; }
   .popup-img { width: 150px; height: 150px; object-fit: cover; border-radius: 4px; display: block; }
+  .popup-img-wrap { position: relative; width: 150px; }
+  .img-del { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; padding: 0;
+    border: 2px solid #fff; border-radius: 50%; background: #e6194b; color: #fff;
+    font: 700 14px/1 sans-serif; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
   .popup-meta { font: 12px sans-serif; color: #555; }
   .arrow svg { display: block; margin: 0 auto 4px; }
   .state-row { display: flex; gap: 3px; margin-top: 4px; }
@@ -197,7 +201,8 @@ function groupPopup(g) {
     const lag = (rec.lag_seconds == null) ? "?" : rec.lag_seconds + " s";
     return `<div class="popup-item">` +
       arrowSvg(rec.heading, "#1e6fff") +
-      `<div><img class="popup-img" src="${rec.image}" alt="${rec.name}" />` +
+      `<div><div class="popup-img-wrap"><img class="popup-img" src="${rec.image}" alt="${rec.name}" />` +
+      `<button class="img-del" onclick="deleteSign('${rec.id}')" title="Remove this sign">×</button></div>` +
       `<div class="popup-meta" style="word-break:break-all">${rec.name}</div>` +
       `<div class="popup-meta">Travel: <b>${dir}</b></div>` +
       `<div class="popup-meta">Type: ${rec.sign_type || "Unknown"}</div>` +
@@ -239,6 +244,28 @@ async function onSignState(id, s, btn) {
   btn.classList.add("active");
   refreshGroup(groupOfId[id]);
 }
+// Remove a single image/sign (the × on the popup photo), with confirmation.
+async function deleteSign(id) {
+  const rec = signsById[id]; if (!rec) return;
+  if (!confirm("Remove this image? This cannot be undone.")) return;
+  await new Promise((res, rej) => { const r = tx("readwrite").delete(id); r.onsuccess = res; r.onerror = () => rej(r.error); });
+  const g = groupOfId[id];
+  delete signsById[id];
+  delete groupOfId[id];
+  if (g) {
+    g.feats = g.feats.filter(f => f.id !== id);
+    if (g.feats.length === 0) {
+      if (g.marker) markerLayer.removeLayer(g.marker);
+      delete groups[coordKey(g.latlng[0], g.latlng[1])];
+      map.closePopup();
+      if (!markerLayer.getLayers().length) showBanner("No signs left. Import a backup to restore.");
+    } else {
+      refreshGroup(g);                                  // update the count badge
+      if (g.marker) g.marker.setPopupContent(groupPopup(g));  // refresh the open popup
+    }
+  }
+  toast("Image removed");
+}
 
 // ---- Review-state / filter control (bottom-right) --------------------------
 const legend = L.control({ position: "bottomleft" });
@@ -275,7 +302,7 @@ function startLocation() {
       // Faint, non-interactive, and drawn as vectors (overlay pane) so they sit
       // BELOW the sign markers — taps fall through to a sign circle underneath.
       accuracyCircle = L.circle(ll, { radius: accuracy, color: "#1e88ff", weight: 1, opacity: 0.25, fillColor: "#1e88ff", fillOpacity: 0.06, interactive: false, className: "user-loc" }).addTo(map);
-      userMarker = L.circleMarker(ll, { radius: 6, color: "#1e88ff", weight: 2, opacity: 0.5, fillColor: "#1e88ff", fillOpacity: 0.35, interactive: false, className: "user-loc" }).addTo(map);
+      userMarker = L.circleMarker(ll, { radius: 15, color: "#ffffff", weight: 3, opacity: 1, fillColor: "#1e88ff", fillOpacity: 1, interactive: false, className: "user-loc" }).addTo(map);
     } else {
       userMarker.setLatLng(ll); accuracyCircle.setLatLng(ll).setRadius(accuracy);
     }
