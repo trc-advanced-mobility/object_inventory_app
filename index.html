@@ -21,8 +21,7 @@
   .count-marker { border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 3px rgba(0,0,0,.5);
     color: #fff; font: 600 12px sans-serif; text-align: center;
     text-shadow: 0 0 2px #000, 0 0 2px #000; }
-  .user-dot { width: 18px; height: 18px; border-radius: 50%; background: #1e88ff;
-    border: 3px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,.5); }
+  .user-loc { pointer-events: none; }  /* location dot/ring never intercept taps */
   .legend { background: #fff; padding: 8px 10px; border-radius: 4px; font: 12px sans-serif;
     line-height: 1.6; box-shadow: 0 1px 4px rgba(0,0,0,.3); max-width: 60vw; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
@@ -98,6 +97,7 @@ const RELIABILITY_COLOR = { good: "#2ca25f", suspect: "#f59e0b", bad: "#e6194b",
 const THUMB_WIDTH = 720, THUMB_QUALITY = 0.75;
 // Live-GPS accuracy (metres) -> reliability, replacing the old EXIF "lag" metric.
 const ACC_GOOD_M = 10, ACC_SUSPECT_M = 25;
+const LAG_SUSPECT_S = 5, LAG_BAD_S = 15;  // capture-time minus GPS-fix-time, seconds
 const activeStates = new Set(STATES);
 
 // ---- IndexedDB store --------------------------------------------------------
@@ -164,6 +164,12 @@ function accColor(m) {
   if (m <= ACC_SUSPECT_M) return RELIABILITY_COLOR.suspect;
   return RELIABILITY_COLOR.bad;
 }
+function lagColor(s) {
+  if (s == null) return RELIABILITY_COLOR.unknown;
+  if (s < LAG_SUSPECT_S) return RELIABILITY_COLOR.good;
+  if (s < LAG_BAD_S) return RELIABILITY_COLOR.suspect;
+  return RELIABILITY_COLOR.bad;
+}
 function stateIcon(g) {
   const present = STATES.filter(s => activeStates.has(s) && g.feats.some(f => getState(f) === s));
   const colors = present.map(s => STATE_COLOR[s]);
@@ -188,14 +194,14 @@ function stateButtons(rec) {
 function groupPopup(g) {
   const items = g.feats.map(rec => {
     const dir = (rec.heading == null) ? "unknown" : `${rec.heading}° true`;
-    const acc = (rec.accuracy_m == null) ? "?" : "±" + rec.accuracy_m + " m";
+    const lag = (rec.lag_seconds == null) ? "?" : rec.lag_seconds + " s";
     return `<div class="popup-item">` +
       arrowSvg(rec.heading, "#1e6fff") +
       `<div><img class="popup-img" src="${rec.image}" alt="${rec.name}" />` +
       `<div class="popup-meta" style="word-break:break-all">${rec.name}</div>` +
       `<div class="popup-meta">Travel: <b>${dir}</b></div>` +
       `<div class="popup-meta">Type: ${rec.sign_type || "Unknown"}</div>` +
-      `<div class="popup-meta" style="color:${accColor(rec.accuracy_m)};font-weight:600">GPS ${acc}</div>` +
+      `<div class="popup-meta" style="color:${lagColor(rec.lag_seconds)};font-weight:600">lag ${lag}</div>` +
       stateButtons(rec) + `</div></div>`;
   }).join("");
   const n = g.feats.length;
@@ -265,8 +271,10 @@ function startLocation() {
     const { latitude, longitude, accuracy } = pos.coords;
     const ll = [latitude, longitude];
     if (!userMarker) {
-      userMarker = L.marker(ll, { icon: L.divIcon({ className: "", html: '<div class="user-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 2000 }).addTo(map);
-      accuracyCircle = L.circle(ll, { radius: accuracy, color: "#1e88ff", weight: 1, fillColor: "#1e88ff", fillOpacity: 0.12 }).addTo(map);
+      // Faint, non-interactive, and drawn as vectors (overlay pane) so they sit
+      // BELOW the sign markers — taps fall through to a sign circle underneath.
+      accuracyCircle = L.circle(ll, { radius: accuracy, color: "#1e88ff", weight: 1, opacity: 0.25, fillColor: "#1e88ff", fillOpacity: 0.06, interactive: false, className: "user-loc" }).addTo(map);
+      userMarker = L.circleMarker(ll, { radius: 6, color: "#1e88ff", weight: 2, opacity: 0.5, fillColor: "#1e88ff", fillOpacity: 0.35, interactive: false, className: "user-loc" }).addTo(map);
     } else {
       userMarker.setLatLng(ll); accuracyCircle.setLatLng(ll).setRadius(accuracy);
     }
@@ -281,19 +289,22 @@ document.getElementById("locateBtn").onclick = () => {
 };
 
 // ---- Compass heading (best effort, iOS needs a permission gesture) ----------
-let lastHeading = null;
+let lastHeading = null, headingReady = false;
 function onOrient(e) {
   const h = (e.webkitCompassHeading != null) ? e.webkitCompassHeading
           : (e.alpha != null && e.absolute) ? (360 - e.alpha) : null;
   if (h != null) lastHeading = Math.round(h);
 }
+// Ask for compass permission once (iOS needs a user gesture) and keep listening.
 async function enableHeading() {
+  if (headingReady) return;
   try {
     const D = window.DeviceOrientationEvent;
     if (D && typeof D.requestPermission === "function") {
       if (await D.requestPermission() !== "granted") return;
     }
     window.addEventListener("deviceorientation", onOrient, true);
+    headingReady = true;
   } catch (e) {}
 }
 
@@ -315,12 +326,14 @@ cameraInput.onchange = async () => {
   if (!pos) { toast("No GPS fix — sign not added"); return; }
   const image = await downscale(file);   // 720px thumbnail, for display
   const acc = Math.round(pos.coords.accuracy);
+  // Staleness of the fix: how old the GPS reading was when the photo was taken.
+  const lag = pos.timestamp ? Math.max(0, Math.round((Date.now() - pos.timestamp) / 1000)) : null;
   const rec = {
     id: "cap-" + Date.now(),
     name: "capture " + new Date().toLocaleString(),
     lat: pos.coords.latitude, lon: pos.coords.longitude,
     heading: lastHeading, sign_type: "Unknown",
-    lag_seconds: null, accuracy_m: acc,
+    lag_seconds: lag, accuracy_m: acc,
     reliability: acc <= ACC_GOOD_M ? "good" : acc <= ACC_SUSPECT_M ? "suspect" : "bad",
     state: "todo", source: "capture", created: new Date().toISOString(),
     image,                               // display thumbnail (was missing → broken image)
@@ -464,11 +477,14 @@ helpOverlay.innerHTML = `<div class="help-modal">
   <h2>Sign inventory — field app</h2>
   <p>Everything you capture is stored <b>on this device only</b>. Nothing is uploaded.</p>
   <h3>Your location</h3>
-  <p>The blue dot is your live GPS position; the ring shows its accuracy. Tap ◎ to recenter.</p>
+  <p>The faint blue dot is your live GPS position; the ring shows its accuracy. It sits below the
+  sign circles and ignores taps, so you can still tap a sign even when you're standing on it.
+  Tap ◎ to recenter.</p>
   <h3>Add a sign</h3>
   <p>Tap the blue <b>＋</b>, take a photo, and a circle drops at your <i>current</i> GPS position
-  immediately — no rebuild needed. The pin uses the live fix at the moment you shoot, so it's
-  as accurate as your GPS is right then (shown as <code>GPS ±N m</code> in the popup).</p>
+  immediately — no rebuild needed. The popup shows <code>lag</code> = seconds between the photo
+  and the GPS fix (smaller is fresher); the compass <b>Travel</b> direction needs you to allow
+  Motion &amp; Orientation access when prompted.</p>
   <h3>Map markers</h3>
   <ul>
     <li><b>Circle</b> = a sign location; <b>number</b> = how many photos are grouped there.</li>
