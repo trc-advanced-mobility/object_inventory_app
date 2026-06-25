@@ -416,7 +416,8 @@ async function exportBackup() {
 async function deliver(blob, name, type) {
   const file = new File([blob], name, { type });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); return; }
+    // Share ONLY the file — passing title/text makes iOS save an extra .txt alongside it.
+    try { await navigator.share({ files: [file] }); return; }
     catch (e) { if (e.name === "AbortError") return; }   // user cancelled — don't double-deliver
   }
   const a = document.createElement("a");
