@@ -331,16 +331,39 @@ cameraInput.onchange = async () => {
   g.marker.openPopup();
   toast("Sign added (±" + acc + " m)");
 };
-// Downscale + re-encode to a JPEG data URI, honoring orientation via createImageBitmap.
-async function downscale(file) {
-  let bmp;
-  try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
-  catch (e) { bmp = await createImageBitmap(file); }
-  const scale = Math.min(1, THUMB_WIDTH / bmp.width);
-  const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
-  const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
-  canvas.getContext("2d").drawImage(bmp, 0, 0, w, h);
-  return canvas.toDataURL("image/jpeg", THUMB_QUALITY);
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+// Downscale a captured photo to a JPEG data URI. Uses an <img> + canvas (works on
+// iOS Safari and HEIC, unlike createImageBitmap). If anything fails, falls back to
+// storing the original photo so the image is never lost.
+function downscale(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, THUMB_WIDTH / img.naturalWidth);
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL("image/jpeg", THUMB_QUALITY);
+        URL.revokeObjectURL(url);
+        if (out && out.length > 12) resolve(out);   // "data:," means encode failed
+        else fileToDataURL(file).then(resolve);
+      } catch (e) { URL.revokeObjectURL(url); fileToDataURL(file).then(resolve); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); fileToDataURL(file).then(resolve); };
+    img.src = url;
+  });
 }
 
 // ---- Export / Import backup -------------------------------------------------
