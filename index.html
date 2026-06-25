@@ -257,7 +257,8 @@ legend.onAdd = () => {
     `<label style="cursor:pointer"><input type="radio" name="base" onchange="setBase('road')"> Road map</label><br>` +
     `<button onclick="exportBackup()">Export</button> ` +
     `<button onclick="pickImport()">Import</button>` +
-    `<br><button onclick="showHelp()" style="margin-top:4px">Help</button>`;
+    `<br><button onclick="showHelp()" style="margin-top:4px">Help</button> ` +
+    `<button onclick="clearData()" style="margin-top:4px;background:#e6194b;color:#fff">Clear</button>`;
   return div;
 };
 legend.addTo(map);
@@ -303,6 +304,9 @@ async function enableHeading() {
     if (D && typeof D.requestPermission === "function") {
       if (await D.requestPermission() !== "granted") return;
     }
+    // Android exposes the absolute (compass) heading via deviceorientationabsolute;
+    // iOS exposes it on plain deviceorientation as webkitCompassHeading.
+    window.addEventListener("deviceorientationabsolute", onOrient, true);
     window.addEventListener("deviceorientation", onOrient, true);
     headingReady = true;
   } catch (e) {}
@@ -457,6 +461,20 @@ importInput.onchange = async () => {
     toast("Imported " + signs.length + " signs");
   } catch (e) { toast("Could not read that file"); }
 };
+// Wipe ALL signs from this device (import merges, so use this for a clean slate).
+async function clearData() {
+  const n = (await dbGetAll()).length;
+  if (!n) { toast("Nothing to clear"); return; }
+  if (!confirm("Delete all " + n + " signs on this device? Export a backup first if unsure — this cannot be undone.")) return;
+  await new Promise((res, rej) => { const r = tx("readwrite").clear(); r.onsuccess = res; r.onerror = () => rej(r.error); });
+  markerLayer.clearLayers();
+  for (const k in groups) delete groups[k];
+  for (const k in signsById) delete signsById[k];
+  for (const k in groupOfId) delete groupOfId[k];
+  map.closePopup();
+  showBanner("All signs cleared. Import a backup to restore.");
+  toast("Cleared " + n + " signs");
+}
 
 // ---- Small UI helpers -------------------------------------------------------
 let toastTimer;
@@ -499,9 +517,15 @@ helpOverlay.innerHTML = `<div class="help-modal">
   <code>.zip</code> backup (your full-resolution photos as image files, plus all locations and
   states) to your phone, via the Share sheet → Save to Files. <b>Import</b> restores a
   <code>.zip</code> backup — or loads the starting <code>seed.json</code> the first time.</p>
+  <p><b>Import merges</b>: it adds new signs and updates matching ones, but never deletes what's
+  already here. To replace everything cleanly, use <b>Clear</b> first, then Import. <b>Clear</b>
+  deletes all signs on this device (asks first) — export a backup before you do.</p>
   <p style="color:#888">Note: the app shows a 720px thumbnail to stay fast; the full-resolution
   original is kept only in the backup, not viewable in-app.</p>
-  <p style="color:#888">Tip: add this page to your Home Screen so iOS keeps the data and it opens full-screen.</p>
+  <p style="color:#888">Storage differs by phone: on <b>iOS</b>, deleting the Home-Screen app also
+  deletes its data — always Export first. On <b>Android</b> the data survives that, so use
+  <b>Clear</b> to wipe it. Add this page to your Home Screen so it opens full-screen and (on iOS)
+  keeps data longer.</p>
 </div>`;
 document.body.appendChild(helpOverlay);
 function showHelp() { helpOverlay.classList.add("open"); }
