@@ -14,6 +14,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
   #map { position: absolute; inset: 0; }
@@ -85,7 +86,7 @@
 
 <!-- hidden inputs -->
 <input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none">
-<input id="importInput" type="file" accept="application/json,.json" style="display:none">
+<input id="importInput" type="file" accept="application/json,.json,application/zip,.zip" style="display:none">
 
 <script>
 "use strict";
@@ -312,7 +313,7 @@ cameraInput.onchange = async () => {
   try { pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })); }
   catch (e) { /* fall back to last watch position */ }
   if (!pos) { toast("No GPS fix — sign not added"); return; }
-  const image = await downscale(file);
+  const image = await downscale(file);   // 720px thumbnail, for display
   const acc = Math.round(pos.coords.accuracy);
   const rec = {
     id: "cap-" + Date.now(),
@@ -322,6 +323,9 @@ cameraInput.onchange = async () => {
     lag_seconds: null, accuracy_m: acc,
     reliability: acc <= ACC_GOOD_M ? "good" : acc <= ACC_SUSPECT_M ? "suspect" : "bad",
     state: "todo", source: "capture", created: new Date().toISOString(),
+    image,                               // display thumbnail (was missing → broken image)
+    original: file,                      // full-res photo kept as a Blob for backup
+    originalType: file.type || "image/jpeg",
   };
   await dbPut(rec);
   const g = indexSign(rec);
@@ -367,35 +371,77 @@ function downscale(file) {
 }
 
 // ---- Export / Import backup -------------------------------------------------
+// Backup = a .zip: original photos as real image files under images/, plus a
+// metadata.json holding coords/states and the display thumbnails. This scales to
+// thousands of signs (a single giant JSON would crash the tab).
+function extFor(type) {
+  if (!type) return "jpg";
+  if (type.includes("png")) return "png";
+  if (type.includes("heic") || type.includes("heif")) return "heic";
+  return "jpg";
+}
 async function exportBackup() {
   const signs = await dbGetAll();
   if (!signs.length) { toast("Nothing to export yet"); return; }
-  const blob = new Blob([JSON.stringify({ version: 1, kind: "sign-inventory-backup", exported: new Date().toISOString(), signs })], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "sign_inventory_" + new Date().toISOString().slice(0, 10) + ".json";
-  a.click();
+  if (typeof JSZip === "undefined") { toast("Backup needs internet (zip library)"); return; }
+  toast("Preparing backup…");
+  const zip = new JSZip();
+  const imgs = zip.folder("images");
+  const meta = [];
+  for (const s of signs) {
+    const { original, originalType, ...rest } = s;   // drop the heavy blob from metadata
+    let imageFile = null;
+    if (original) { imageFile = s.id + "." + extFor(originalType); imgs.file(imageFile, original); }
+    meta.push({ ...rest, imageFile });
+  }
+  zip.file("metadata.json", JSON.stringify({ version: 2, kind: "sign-inventory-backup", exported: new Date().toISOString(), signs: meta }));
+  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 1 } });
+  await deliver(blob, "sign_inventory_" + new Date().toISOString().slice(0, 10) + ".zip", "application/zip");
   toast(signs.length + " signs exported");
+}
+// Prefer the iOS share sheet (reliable in standalone PWAs); fall back to download.
+async function deliver(blob, name, type) {
+  const file = new File([blob], name, { type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; }
+    catch (e) { if (e.name === "AbortError") return; }   // user cancelled — don't double-deliver
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 const importInput = document.getElementById("importInput");
 function pickImport() { importInput.value = ""; importInput.click(); }
-importInput.onchange = () => {
+importInput.onchange = async () => {
   const file = importInput.files[0]; if (!file) return;
-  const r = new FileReader();
-  r.onload = async () => {
-    try {
-      const data = JSON.parse(r.result);
-      const signs = Array.isArray(data) ? data : data.signs;
-      if (!Array.isArray(signs)) throw new Error("no signs array");
-      await dbPutMany(signs);
-      signs.forEach(indexSign);
-      applyFilter();
-      if (markerLayer.getLayers().length) map.fitBounds(markerLayer.getBounds().pad(0.2));
-      hideBanner();
-      toast("Imported " + signs.length + " signs");
-    } catch (e) { toast("Could not read that file"); }
-  };
-  r.readAsText(file);
+  try {
+    let signs;
+    if (/\.zip$/i.test(file.name) || file.type === "application/zip") {
+      if (typeof JSZip === "undefined") { toast("Import needs internet (zip library)"); return; }
+      const zip = await JSZip.loadAsync(file);
+      const metaFile = zip.file("metadata.json");
+      if (!metaFile) throw new Error("no metadata.json");
+      const data = JSON.parse(await metaFile.async("string"));
+      signs = data.signs || data;
+      for (const s of signs) {            // reattach originals as blobs
+        if (s.imageFile) {
+          const f = zip.file("images/" + s.imageFile);
+          if (f) { s.original = await f.async("blob"); s.originalType = s.original.type || "image/jpeg"; }
+          delete s.imageFile;
+        }
+      }
+    } else {                              // plain JSON (e.g. seed.json)
+      const data = JSON.parse(await file.text());
+      signs = Array.isArray(data) ? data : data.signs;
+    }
+    if (!Array.isArray(signs)) throw new Error("no signs array");
+    await dbPutMany(signs);
+    signs.forEach(indexSign);
+    applyFilter();
+    if (markerLayer.getLayers().length) map.fitBounds(markerLayer.getBounds().pad(0.2));
+    hideBanner();
+    toast("Imported " + signs.length + " signs");
+  } catch (e) { toast("Could not read that file"); }
 };
 
 // ---- Small UI helpers -------------------------------------------------------
@@ -432,9 +478,12 @@ helpOverlay.innerHTML = `<div class="help-modal">
   <p>Tap a circle for its photos. Set each one's state with the todo/good/review/replace buttons;
   uncheck a state in the bottom-right box to hide it.</p>
   <h3>Backup (important)</h3>
-  <p>This device holds the only copy. Use <b>Export</b> at the end of each day to save a backup
-  file to your phone (Files app). <b>Import</b> restores a backup — or loads the starting
-  <code>seed.json</code> the first time.</p>
+  <p>This device holds the only copy. Use <b>Export</b> at the end of each day to save a
+  <code>.zip</code> backup (your full-resolution photos as image files, plus all locations and
+  states) to your phone, via the Share sheet → Save to Files. <b>Import</b> restores a
+  <code>.zip</code> backup — or loads the starting <code>seed.json</code> the first time.</p>
+  <p style="color:#888">Note: the app shows a 720px thumbnail to stay fast; the full-resolution
+  original is kept only in the backup, not viewable in-app.</p>
   <p style="color:#888">Tip: add this page to your Home Screen so iOS keeps the data and it opens full-screen.</p>
 </div>`;
 document.body.appendChild(helpOverlay);
