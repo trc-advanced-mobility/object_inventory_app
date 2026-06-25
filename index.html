@@ -125,14 +125,18 @@ function dbPutMany(recs) {
 }
 
 // ---- Map --------------------------------------------------------------------
-const map = L.map("map", { zoomControl: true });
+const map = L.map("map", { zoomControl: false });  // pinch-zoom only
 const sat = L.tileLayer(
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   { maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles © Esri" });
 const road = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   { maxZoom: 19, attribution: "© OpenStreetMap" });
 sat.addTo(map);
-L.control.layers({ Satellite: sat, "Road map": road }, null, { position: "topright" }).addTo(map);
+// Base-map switch (driven by the toggle in the review-state panel).
+function setBase(which) {
+  if (which === "road") { if (map.hasLayer(sat)) map.removeLayer(sat); if (!map.hasLayer(road)) road.addTo(map); }
+  else { if (map.hasLayer(road)) map.removeLayer(road); if (!map.hasLayer(sat)) sat.addTo(map); }
+}
 map.setView([33.4, -112.0], 12);
 
 const markerLayer = L.featureGroup().addTo(map);
@@ -228,7 +232,7 @@ async function onSignState(id, s, btn) {
 }
 
 // ---- Review-state / filter control (bottom-right) --------------------------
-const legend = L.control({ position: "bottomright" });
+const legend = L.control({ position: "bottomleft" });
 legend.onAdd = () => {
   const div = L.DomUtil.create("div", "legend");
   L.DomEvent.disableClickPropagation(div);
@@ -238,7 +242,10 @@ legend.onAdd = () => {
     `<div class="legend-hint">Uncheck to hide from map</div>` +
     STATES.map(s =>
       `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleState('${s}',this.checked)"> ` +
-      `<i style="background:${STATE_COLOR[s]}"></i>${s}</label>`).join("<br>") + `<br>` +
+      `<i style="background:${STATE_COLOR[s]}"></i>${s}</label>`).join("<br>") +
+    `<div class="legend-hint" style="margin-top:6px">Base map</div>` +
+    `<label style="cursor:pointer"><input type="radio" name="base" checked onchange="setBase('sat')"> Satellite</label><br>` +
+    `<label style="cursor:pointer"><input type="radio" name="base" onchange="setBase('road')"> Road map</label><br>` +
     `<button onclick="exportBackup()">Export</button> ` +
     `<button onclick="pickImport()">Import</button>` +
     `<br><button onclick="showHelp()" style="margin-top:4px">Help</button>`;
