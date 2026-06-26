@@ -32,6 +32,7 @@
     justify-content: space-between; gap: 14px; }
   .legend-caret { font-size: 10px; color: #888; }
   .legend.collapsed .legend-body { display: none; }
+  .legend-ver { font: 10px sans-serif; color: #aaa; margin-top: 6px; text-align: right; }
   .popup-title { font: 600 13px sans-serif; margin-bottom: 6px; }
   .popup-scroll { display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; }
   .popup-item { flex: 0 0 auto; width: 160px; }
@@ -108,6 +109,7 @@ const THUMB_WIDTH = 720, THUMB_QUALITY = 0.75;
 // Live-GPS accuracy (metres) -> reliability, replacing the old EXIF "lag" metric.
 const ACC_GOOD_M = 10, ACC_SUSPECT_M = 25;
 const LAG_SUSPECT_S = 5, LAG_BAD_S = 15;  // capture-time minus GPS-fix-time, seconds
+const APP_VERSION = "1.0.0";
 const activeStates = new Set(STATES);
 const activeTypes = new Set(OBJECT_TYPES);  // independent object-type filter
 
@@ -314,6 +316,7 @@ legend.onAdd = () => {
       `<button onclick="pickImport()">Import</button>` +
       `<br><button onclick="showHelp()" style="margin-top:4px">Help</button> ` +
       `<button onclick="clearData()" style="margin-top:4px;background:#e6194b;color:#fff">Clear</button>` +
+      `<div class="legend-ver">v${APP_VERSION}</div>` +
     `</div>`;
   return div;
 };
