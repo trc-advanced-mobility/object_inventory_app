@@ -42,14 +42,10 @@
     font: 700 14px/1 sans-serif; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
   .popup-meta { font: 12px sans-serif; color: #555; }
   .arrow svg { display: block; margin: 0 auto 4px; }
-  .state-row { display: flex; gap: 3px; margin-top: 4px; }
-  .stbtn { flex: 1; font: 600 10px sans-serif; padding: 3px 0; border: 1px solid #ccc;
-    border-radius: 3px; background: #f7f7f7; color: #444; cursor: pointer; }
-  .stbtn.active { background: var(--c); color: #fff; border-color: var(--c); }
-  .type-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
-  .tybtn { font: 600 9px sans-serif; padding: 3px 5px; border: 1px solid #ccc;
-    border-radius: 3px; background: #f7f7f7; color: #444; cursor: pointer; }
-  .tybtn.active { background: #1e6fff; color: #fff; border-color: #1e6fff; }
+  .sel-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .sel-label { font: 600 10px sans-serif; color: #666; width: 34px; flex: 0 0 auto; }
+  .sel { flex: 1; min-width: 0; font: 12px sans-serif; padding: 2px 4px; border: 1px solid #ccc;
+    border-radius: 3px; background: #fff; color: #222; }
   .zoom-lens { position: fixed; pointer-events: none; display: none; z-index: 10000;
     width: 260px; height: 260px; border: 2px solid #fff; border-radius: 6px;
     background-color: #000; background-repeat: no-repeat; box-shadow: 0 2px 10px rgba(0,0,0,.6); }
@@ -204,19 +200,17 @@ function stateIcon(g) {
   const html = `<div class="count-marker" style="background:${bg};width:${size}px;height:${size}px;line-height:${size - 4}px">${n}</div>`;
   return L.divIcon({ className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2], html });
 }
-function stateButtons(rec) {
+function stateSelect(rec) {
   const cur = getState(rec);
-  const btns = STATES.map(s =>
-    `<button class="stbtn ${s === cur ? "active" : ""}" style="--c:${STATE_COLOR[s]}" ` +
-    `onclick="onSignState('${rec.id}','${s}',this)">${s}</button>`).join("");
-  return `<div class="state-row">${btns}</div>`;
+  const opts = STATES.map(s => `<option value="${s}"${s === cur ? " selected" : ""}>${s}</option>`).join("");
+  return `<div class="sel-row"><span class="sel-label">State</span>` +
+    `<select class="sel" onchange="onSignState('${rec.id}',this.value)">${opts}</select></div>`;
 }
-function typeButtons(rec) {
+function typeSelect(rec) {
   const cur = getType(rec);
-  const btns = OBJECT_TYPES.map(t =>
-    `<button class="tybtn ${t === cur ? "active" : ""}" ` +
-    `onclick="onObjectType('${rec.id}','${t}',this)">${t}</button>`).join("");
-  return `<div class="type-row">${btns}</div>`;
+  const opts = OBJECT_TYPES.map(t => `<option value="${t}"${t === cur ? " selected" : ""}>${t}</option>`).join("");
+  return `<div class="sel-row"><span class="sel-label">Type</span>` +
+    `<select class="sel" onchange="onObjectType('${rec.id}',this.value)">${opts}</select></div>`;
 }
 function groupPopup(g) {
   const items = g.feats.map(rec => {
@@ -229,7 +223,7 @@ function groupPopup(g) {
       `<div class="popup-meta" style="word-break:break-all">${rec.name}</div>` +
       `<div class="popup-meta">Travel: <b>${dir}</b></div>` +
       `<div class="popup-meta" style="color:${lagColor(rec.lag_seconds)};font-weight:600">lag ${lag}</div>` +
-      stateButtons(rec) + typeButtons(rec) + `</div></div>`;
+      stateSelect(rec) + typeSelect(rec) + `</div></div>`;
   }).join("");
   const n = g.feats.length;
   return `<div class="popup-title">${n} object${n > 1 ? "s" : ""} at this location</div>` +
@@ -262,22 +256,16 @@ function indexSign(rec) {
   groupOfId[rec.id] = g;
   return g;
 }
-async function onSignState(id, s, btn) {
+async function onSignState(id, s) {
   const rec = signsById[id]; if (!rec) return;
   rec.state = s;
   await dbPut(rec);
-  const row = btn.parentElement;
-  row.querySelectorAll(".stbtn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
   refreshGroup(groupOfId[id]);
 }
-async function onObjectType(id, t, btn) {
+async function onObjectType(id, t) {
   const rec = signsById[id]; if (!rec) return;
   rec.object_type = t;
   await dbPut(rec);
-  const row = btn.parentElement;
-  row.querySelectorAll(".tybtn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
   refreshGroup(groupOfId[id]);  // type filter may change visibility
 }
 // Remove a single image/sign (the × on the popup photo), with confirmation.
