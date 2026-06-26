@@ -28,6 +28,10 @@
     margin-right: 6px; vertical-align: -1px; border: 1px solid #fff; }
   .legend button { font: 11px sans-serif; margin-top: 6px; cursor: pointer; }
   .legend-hint { font: italic 10px sans-serif; color: #888; margin: 1px 0 3px; }
+  .legend-head { cursor: pointer; user-select: none; display: flex; align-items: center;
+    justify-content: space-between; gap: 14px; }
+  .legend-caret { font-size: 10px; color: #888; }
+  .legend.collapsed .legend-body { display: none; }
   .popup-title { font: 600 13px sans-serif; margin-bottom: 6px; }
   .popup-scroll { display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; }
   .popup-item { flex: 0 0 auto; width: 160px; }
@@ -244,6 +248,10 @@ function refreshGroup(g) {
 function applyFilter() { for (const k in groups) refreshGroup(groups[k]); }
 function toggleState(s, on) { on ? activeStates.add(s) : activeStates.delete(s); applyFilter(); }
 function toggleType(t, on) { on ? activeTypes.add(t) : activeTypes.delete(t); applyFilter(); }
+function toggleLegend(head) {
+  const collapsed = head.closest(".legend").classList.toggle("collapsed");
+  head.querySelector(".legend-caret").textContent = collapsed ? "▸" : "▾";
+}
 
 // Add one record to the in-memory index + map (no DB write).
 function indexSign(rec) {
@@ -302,21 +310,23 @@ legend.onAdd = () => {
   L.DomEvent.disableClickPropagation(div);
   L.DomEvent.disableScrollPropagation(div);
   div.innerHTML =
-    `<b>Review state</b><br>` +
-    `<div class="legend-hint">Uncheck to hide from map</div>` +
-    STATES.map(s =>
-      `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleState('${s}',this.checked)"> ` +
-      `<i style="background:${STATE_COLOR[s]}"></i>${s}</label>`).join("<br>") +
-    `<div class="legend-hint" style="margin-top:6px">Object type</div>` +
-    OBJECT_TYPES.map(t =>
-      `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleType('${t}',this.checked)"> ${t}</label>`).join("<br>") +
-    `<div class="legend-hint" style="margin-top:6px">Base map</div>` +
-    `<label style="cursor:pointer"><input type="radio" name="base" checked onchange="setBase('sat')"> Satellite</label><br>` +
-    `<label style="cursor:pointer"><input type="radio" name="base" onchange="setBase('road')"> Road map</label><br>` +
-    `<button onclick="exportBackup()">Export</button> ` +
-    `<button onclick="pickImport()">Import</button>` +
-    `<br><button onclick="showHelp()" style="margin-top:4px">Help</button> ` +
-    `<button onclick="clearData()" style="margin-top:4px;background:#e6194b;color:#fff">Clear</button>`;
+    `<div class="legend-head" onclick="toggleLegend(this)"><b>Review state</b><span class="legend-caret">▾</span></div>` +
+    `<div class="legend-body">` +
+      `<div class="legend-hint">Uncheck to hide from map</div>` +
+      STATES.map(s =>
+        `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleState('${s}',this.checked)"> ` +
+        `<i style="background:${STATE_COLOR[s]}"></i>${s}</label>`).join("<br>") +
+      `<div class="legend-hint" style="margin-top:6px">Object type</div>` +
+      OBJECT_TYPES.map(t =>
+        `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleType('${t}',this.checked)"> ${t}</label>`).join("<br>") +
+      `<div class="legend-hint" style="margin-top:6px">Base map</div>` +
+      `<label style="cursor:pointer"><input type="radio" name="base" checked onchange="setBase('sat')"> Satellite</label><br>` +
+      `<label style="cursor:pointer"><input type="radio" name="base" onchange="setBase('road')"> Road map</label><br>` +
+      `<button onclick="exportBackup()">Export</button> ` +
+      `<button onclick="pickImport()">Import</button>` +
+      `<br><button onclick="showHelp()" style="margin-top:4px">Help</button> ` +
+      `<button onclick="clearData()" style="margin-top:4px;background:#e6194b;color:#fff">Clear</button>` +
+    `</div>`;
   return div;
 };
 legend.addTo(map);
