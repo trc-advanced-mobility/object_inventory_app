@@ -42,6 +42,10 @@
   .stbtn { flex: 1; font: 600 10px sans-serif; padding: 3px 0; border: 1px solid #ccc;
     border-radius: 3px; background: #f7f7f7; color: #444; cursor: pointer; }
   .stbtn.active { background: var(--c); color: #fff; border-color: var(--c); }
+  .type-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+  .tybtn { font: 600 9px sans-serif; padding: 3px 5px; border: 1px solid #ccc;
+    border-radius: 3px; background: #f7f7f7; color: #444; cursor: pointer; }
+  .tybtn.active { background: #1e6fff; color: #fff; border-color: #1e6fff; }
   .zoom-lens { position: fixed; pointer-events: none; display: none; z-index: 10000;
     width: 260px; height: 260px; border: 2px solid #fff; border-radius: 6px;
     background-color: #000; background-repeat: no-repeat; box-shadow: 0 2px 10px rgba(0,0,0,.6); }
@@ -97,12 +101,15 @@
 // ---- Config (mirrors build_map.py) -----------------------------------------
 const STATES = ["todo", "good", "review", "replace"];
 const STATE_COLOR = { todo: "#9e9e9e", good: "#2ca25f", review: "#f59e0b", replace: "#e6194b" };
+// Object type is independent of review state (an inventory has more than signs).
+const OBJECT_TYPES = ["unknown", "sign", "pavement", "fencing", "ev charger"];
 const RELIABILITY_COLOR = { good: "#2ca25f", suspect: "#f59e0b", bad: "#e6194b", unknown: "#888888" };
 const THUMB_WIDTH = 720, THUMB_QUALITY = 0.75;
 // Live-GPS accuracy (metres) -> reliability, replacing the old EXIF "lag" metric.
 const ACC_GOOD_M = 10, ACC_SUSPECT_M = 25;
 const LAG_SUSPECT_S = 5, LAG_BAD_S = 15;  // capture-time minus GPS-fix-time, seconds
 const activeStates = new Set(STATES);
+const activeTypes = new Set(OBJECT_TYPES);  // independent object-type filter
 
 // ---- IndexedDB store --------------------------------------------------------
 const DB_NAME = "signInventory", STORE = "signs";
@@ -153,6 +160,10 @@ const groupOfId = {};       // id -> group
 
 const coordKey = (lat, lon) => lat.toFixed(6) + "," + lon.toFixed(6);
 function getState(rec) { return rec.state || "todo"; }
+function getType(rec) { return rec.object_type || "unknown"; }
+// A record shows only if it passes BOTH the (independent) state and type filters.
+function passesFilter(f) { return activeStates.has(getState(f)) && activeTypes.has(getType(f)); }
+function visibleFeats(g) { return g.feats.filter(passesFilter); }
 
 // ---- Marker rendering (ported from build_map.py) ---------------------------
 function arrowSvg(deg, color) {
@@ -175,7 +186,8 @@ function lagColor(s) {
   return RELIABILITY_COLOR.bad;
 }
 function stateIcon(g) {
-  const present = STATES.filter(s => activeStates.has(s) && g.feats.some(f => getState(f) === s));
+  const vis = visibleFeats(g);
+  const present = STATES.filter(s => vis.some(f => getState(f) === s));
   const colors = present.map(s => STATE_COLOR[s]);
   let bg;
   if (colors.length <= 1) {
@@ -184,7 +196,7 @@ function stateIcon(g) {
     const step = 100 / colors.length;
     bg = `linear-gradient(90deg, ${colors.map((c, i) => `${c} ${i * step}% ${(i + 1) * step}%`).join(", ")})`;
   }
-  const n = g.feats.length, size = n > 1 ? 26 : 20;
+  const n = vis.length || g.feats.length, size = n > 1 ? 26 : 20;
   const html = `<div class="count-marker" style="background:${bg};width:${size}px;height:${size}px;line-height:${size - 4}px">${n}</div>`;
   return L.divIcon({ className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2], html });
 }
@@ -194,6 +206,13 @@ function stateButtons(rec) {
     `<button class="stbtn ${s === cur ? "active" : ""}" style="--c:${STATE_COLOR[s]}" ` +
     `onclick="onSignState('${rec.id}','${s}',this)">${s}</button>`).join("");
   return `<div class="state-row">${btns}</div>`;
+}
+function typeButtons(rec) {
+  const cur = getType(rec);
+  const btns = OBJECT_TYPES.map(t =>
+    `<button class="tybtn ${t === cur ? "active" : ""}" ` +
+    `onclick="onObjectType('${rec.id}','${t}',this)">${t}</button>`).join("");
+  return `<div class="type-row">${btns}</div>`;
 }
 function groupPopup(g) {
   const items = g.feats.map(rec => {
@@ -205,12 +224,11 @@ function groupPopup(g) {
       `<button class="img-del" onclick="deleteSign('${rec.id}')" title="Remove this sign">×</button></div>` +
       `<div class="popup-meta" style="word-break:break-all">${rec.name}</div>` +
       `<div class="popup-meta">Travel: <b>${dir}</b></div>` +
-      `<div class="popup-meta">Type: ${rec.sign_type || "Unknown"}</div>` +
       `<div class="popup-meta" style="color:${lagColor(rec.lag_seconds)};font-weight:600">lag ${lag}</div>` +
-      stateButtons(rec) + `</div></div>`;
+      stateButtons(rec) + typeButtons(rec) + `</div></div>`;
   }).join("");
   const n = g.feats.length;
-  return `<div class="popup-title">${n} sign${n > 1 ? "s" : ""} at this location</div>` +
+  return `<div class="popup-title">${n} object${n > 1 ? "s" : ""} at this location</div>` +
     `<div class="popup-scroll">${items}</div>`;
 }
 function ensureMarker(g) {
@@ -219,12 +237,13 @@ function ensureMarker(g) {
   markerLayer.addLayer(g.marker);
 }
 function refreshGroup(g) {
-  const visible = g.feats.some(f => activeStates.has(getState(f)));
+  const visible = visibleFeats(g).length > 0;
   if (visible) { ensureMarker(g); if (g.marker && !markerLayer.hasLayer(g.marker)) markerLayer.addLayer(g.marker); }
   else if (g.marker && markerLayer.hasLayer(g.marker)) markerLayer.removeLayer(g.marker);
 }
 function applyFilter() { for (const k in groups) refreshGroup(groups[k]); }
 function toggleState(s, on) { on ? activeStates.add(s) : activeStates.delete(s); applyFilter(); }
+function toggleType(t, on) { on ? activeTypes.add(t) : activeTypes.delete(t); applyFilter(); }
 
 // Add one record to the in-memory index + map (no DB write).
 function indexSign(rec) {
@@ -243,6 +262,15 @@ async function onSignState(id, s, btn) {
   row.querySelectorAll(".stbtn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   refreshGroup(groupOfId[id]);
+}
+async function onObjectType(id, t, btn) {
+  const rec = signsById[id]; if (!rec) return;
+  rec.object_type = t;
+  await dbPut(rec);
+  const row = btn.parentElement;
+  row.querySelectorAll(".tybtn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  refreshGroup(groupOfId[id]);  // type filter may change visibility
 }
 // Remove a single image/sign (the × on the popup photo), with confirmation.
 async function deleteSign(id) {
@@ -279,6 +307,9 @@ legend.onAdd = () => {
     STATES.map(s =>
       `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleState('${s}',this.checked)"> ` +
       `<i style="background:${STATE_COLOR[s]}"></i>${s}</label>`).join("<br>") +
+    `<div class="legend-hint" style="margin-top:6px">Object type</div>` +
+    OBJECT_TYPES.map(t =>
+      `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleType('${t}',this.checked)"> ${t}</label>`).join("<br>") +
     `<div class="legend-hint" style="margin-top:6px">Base map</div>` +
     `<label style="cursor:pointer"><input type="radio" name="base" checked onchange="setBase('sat')"> Satellite</label><br>` +
     `<label style="cursor:pointer"><input type="radio" name="base" onchange="setBase('road')"> Road map</label><br>` +
@@ -363,7 +394,7 @@ cameraInput.onchange = async () => {
     id: "cap-" + Date.now(),
     name: "capture " + new Date().toLocaleString(),
     lat: pos.coords.latitude, lon: pos.coords.longitude,
-    heading: lastHeading, sign_type: "Unknown",
+    heading: lastHeading, object_type: "unknown",
     lag_seconds: lag, accuracy_m: acc,
     reliability: acc <= ACC_GOOD_M ? "good" : acc <= ACC_SUSPECT_M ? "suspect" : "bad",
     state: "todo", source: "capture", created: new Date().toISOString(),
