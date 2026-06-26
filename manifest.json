@@ -1,6 +1,6 @@
 {
-  "name": "Sign inventory",
-  "short_name": "Signs",
+  "name": "Inventory",
+  "short_name": "Inventory",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1e6fff",
