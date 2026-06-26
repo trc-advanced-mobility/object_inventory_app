@@ -549,33 +549,38 @@ helpOverlay.className = "help-overlay";
 helpOverlay.addEventListener("click", e => { if (e.target === helpOverlay) hideHelp(); });
 helpOverlay.innerHTML = `<div class="help-modal">
   <button class="help-close" onclick="hideHelp()">&times;</button>
-  <h2>Sign inventory — field app</h2>
+  <h2>Object inventory — help</h2>
   <p>Everything you capture is stored <b>on this device only</b>. Nothing is uploaded.</p>
   <h3>Your location</h3>
-  <p>The faint blue dot is your live GPS position; the ring shows its accuracy. It sits below the
-  sign circles and ignores taps, so you can still tap a sign even when you're standing on it.
+  <p>The blue dot is your live GPS position; the ring shows its accuracy. It sits below the
+  markers and ignores taps, so you can still tap an object even when you're standing on it.
   Tap ◎ to recenter.</p>
-  <h3>Add a sign</h3>
+  <h3>Add an object</h3>
   <p>Tap the blue <b>＋</b>, take a photo, and a circle drops at your <i>current</i> GPS position
-  immediately — no rebuild needed. The popup shows <code>lag</code> = seconds between the photo
-  and the GPS fix (smaller is fresher); the compass <b>capture direction</b> needs you to allow
-  Motion &amp; Orientation access when prompted.</p>
+  immediately — no rebuild needed. Then open it and set its <b>Type</b> and <b>State</b>.
+  The popup's <code>lag</code> = seconds between the photo and the GPS fix (smaller is fresher);
+  the compass <b>capture direction</b> needs you to allow Motion &amp; Orientation access when prompted.</p>
   <h3>Map markers</h3>
   <ul>
-    <li><b>Circle</b> = a sign location; <b>number</b> = how many photos are grouped there.</li>
+    <li><b>Circle</b> = an object location; <b>number</b> = how many photos are grouped there.</li>
     <li><b>Color</b> = review state (mixed states show as stripes):
       ${swatch("todo")}todo · ${swatch("good")}good · ${swatch("review")}review · ${swatch("replace")}replace.</li>
   </ul>
-  <p>Tap a circle for its photos. Set each one's state with the todo/good/review/replace buttons;
-  uncheck a state in the bottom-right box to hide it.</p>
+  <p>Tap a circle to see its photos. For each one, pick its <b>State</b> and <b>Type</b>
+  (sign, pavement, fencing, ev charger, unknown) from the dropdowns, or tap the red <b>×</b> on a
+  photo to remove that object (asks first).</p>
+  <h3>The panel (bottom-left)</h3>
+  <p>Tap the header to collapse or expand it. <b>Review state</b> and <b>Object type</b> are
+  <i>independent</i> filters — uncheck any value to hide matching objects from the map.
+  <b>Base map</b> switches satellite / road.</p>
   <h3>Backup (important)</h3>
   <p>This device holds the only copy. Use <b>Export</b> at the end of each day to save a
-  <code>.zip</code> backup (your full-resolution photos as image files, plus all locations and
-  states) to your phone, via the Share sheet → Save to Files. <b>Import</b> restores a
-  <code>.zip</code> backup — or loads the starting <code>seed.json</code> the first time.</p>
-  <p><b>Import merges</b>: it adds new signs and updates matching ones, but never deletes what's
+  <code>.zip</code> backup (full-resolution photos as image files, plus all locations, states and
+  types) to your phone, via the Share sheet → Save to Files. <b>Import</b> restores a
+  <code>.zip</code> — or loads the starting <code>seed.json</code> the first time.</p>
+  <p><b>Import merges</b>: it adds new objects and updates matching ones, but never deletes what's
   already here. To replace everything cleanly, use <b>Clear</b> first, then Import. <b>Clear</b>
-  deletes all signs on this device (asks first) — export a backup before you do.</p>
+  deletes all objects on this device (asks first) — export a backup before you do.</p>
   <p style="color:#888">Note: the app shows a 720px thumbnail to stay fast; the full-resolution
   original is kept only in the backup, not viewable in-app.</p>
   <p style="color:#888">Storage differs by phone: on <b>iOS</b>, deleting the Home-Screen app also
