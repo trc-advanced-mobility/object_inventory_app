@@ -221,7 +221,7 @@ function groupPopup(g) {
       `<div><div class="popup-img-wrap"><img class="popup-img" src="${rec.image}" alt="${rec.name}" />` +
       `<button class="img-del" onclick="deleteSign('${rec.id}')" title="Remove this sign">×</button></div>` +
       `<div class="popup-meta" style="word-break:break-all">${rec.name}</div>` +
-      `<div class="popup-meta">Travel: <b>${dir}</b></div>` +
+      `<div class="popup-meta">Capture direction: <b>${dir}</b></div>` +
       `<div class="popup-meta" style="color:${lagColor(rec.lag_seconds)};font-weight:600">lag ${lag}</div>` +
       stateSelect(rec) + typeSelect(rec) + `</div></div>`;
   }).join("");
@@ -558,7 +558,7 @@ helpOverlay.innerHTML = `<div class="help-modal">
   <h3>Add a sign</h3>
   <p>Tap the blue <b>＋</b>, take a photo, and a circle drops at your <i>current</i> GPS position
   immediately — no rebuild needed. The popup shows <code>lag</code> = seconds between the photo
-  and the GPS fix (smaller is fresher); the compass <b>Travel</b> direction needs you to allow
+  and the GPS fix (smaller is fresher); the compass <b>capture direction</b> needs you to allow
   Motion &amp; Orientation access when prompted.</p>
   <h3>Map markers</h3>
   <ul>
