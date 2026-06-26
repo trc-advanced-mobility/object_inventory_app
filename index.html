@@ -310,9 +310,9 @@ legend.onAdd = () => {
   L.DomEvent.disableClickPropagation(div);
   L.DomEvent.disableScrollPropagation(div);
   div.innerHTML =
-    `<div class="legend-head" onclick="toggleLegend(this)"><b>Review state</b><span class="legend-caret">▾</span></div>` +
+    `<div class="legend-head" onclick="toggleLegend(this)"><span class="legend-caret">▾</span></div>` +
     `<div class="legend-body">` +
-      `<div class="legend-hint">Uncheck to hide from map</div>` +
+      `<div class="legend-hint">Review state</div>` +
       STATES.map(s =>
         `<label style="cursor:pointer"><input type="checkbox" checked onchange="toggleState('${s}',this.checked)"> ` +
         `<i style="background:${STATE_COLOR[s]}"></i>${s}</label>`).join("<br>") +
