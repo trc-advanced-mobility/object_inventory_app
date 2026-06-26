@@ -6,7 +6,7 @@
 <title>Inventory</title>
 <!-- iOS "Add to Home Screen" standalone app -->
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Inventory">
 <meta name="theme-color" content="#1e6fff">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
@@ -109,7 +109,7 @@ const THUMB_WIDTH = 720, THUMB_QUALITY = 0.75;
 // Live-GPS accuracy (metres) -> reliability, replacing the old EXIF "lag" metric.
 const ACC_GOOD_M = 10, ACC_SUSPECT_M = 25;
 const LAG_SUSPECT_S = 5, LAG_BAD_S = 15;  // capture-time minus GPS-fix-time, seconds
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.1";
 const activeStates = new Set(STATES);
 const activeTypes = new Set(OBJECT_TYPES);  // independent object-type filter
 
